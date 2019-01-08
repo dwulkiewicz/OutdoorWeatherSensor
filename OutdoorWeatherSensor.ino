@@ -1,6 +1,6 @@
 /************************************************************************/
 /*                                                                      */
-/*      Temperatura, wilgotność, ciśnienie BME280 na MQTT 		        */
+/*      Temperatura, wilgotność, ciśnienie BME280 na MQTT 		         */
 /*              Hardware: ESP8266 (NodeMCU 0.9)                         */
 /*                                                                      */
 /*              Author: Dariusz Wulkiewicz                              */
