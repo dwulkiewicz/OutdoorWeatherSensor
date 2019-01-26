@@ -33,11 +33,6 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 Adafruit_BME280 bme; // I2C
 
-float humidity, temp_c;  // Values read from sensor
-// Generally, you should use "unsigned long" for variables that hold time
-unsigned long previousMillis = 0;        // will store last temp was read
-const long interval = 2000;              // interval at which to read sensor
-
 char msg[50];
 
 // Set Hostname.
