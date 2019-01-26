@@ -1,7 +1,7 @@
 /************************************************************************/
 /*                                                                      */
-/*      Temperatura, wilgotność, ciśnienie BME280 na MQTT 		         */
-/*              Hardware: ESP8266 (NodeMCU 0.9)                         */
+/*      Temperatura, wilgotność, ciśnienie BME280 na MQTT 	            */
+/*              Hardware: ESP8266 (ESP12E)                              */
 /*                                                                      */
 /*              Author: Dariusz Wulkiewicz                              */
 /*                      d.wulkiewicz@gmail.com                          */
@@ -25,10 +25,9 @@
 #include <math.h>
 #include "Constants.h"
 
-String ssid;
-String password;
-String mqtt_server;
-
+String wifiSSID;
+String wifiPassword;
+String mqttServer;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -43,63 +42,39 @@ char msg[50];
 
 // Set Hostname.
 String esp2866_hostname(HOSTNAME_PREFIX);
-
-unsigned long mqttResCount = 0;
-unsigned long mqttReqCount = 0;
-unsigned long mqttResCountLast = 0;
-unsigned long mqttReqCountLast = 0;
-
 //----------------------------------------------------------------------------------------
 bool loadConfig() {
-
-	File configFile = SPIFFS.open("/config.json", "r");
-	if (!configFile) {
+	File file = SPIFFS.open("/config.json", "r");
+	if (!file) {
 		Serial.println("Failed to open config file");
 		return false;
 	}
 
-	size_t size = configFile.size();
-	if (size > 1024) {
-		Serial.println("Config file size is too large");
-		return false;
-	}
-
-	// Allocate a buffer to store contents of the file.
-	std::unique_ptr<char[]> buf(new char[size]);
-
-	// We don't use String here because ArduinoJson library requires the input
-	// buffer to be mutable. If you don't use ArduinoJson, you may as well
-	// use configFile.readString instead.
-	configFile.readBytes(buf.get(), size);
-
-	StaticJsonBuffer<200> jsonBuffer;
-	JsonObject& json = jsonBuffer.parseObject(buf.get());
-
-	if (!json.success()) {
-		Serial.println("Failed to parse config file");
-		return false;
-	}
-
-	ssid = json["ssid"].asString();
-	password = json["password"].asString();
-	mqtt_server = json["mqtt_server"].asString();
-
-	// Real world application would store these values in some variables for
-	// later use.
-
-	Serial.printf("Loaded ssid: %s\r\n", ssid.c_str());
-	Serial.printf("Loaded password: %s\r\n", password.c_str());
-	Serial.printf("Loaded mqtt_server: %s\r\n", mqtt_server.c_str());
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, file);
+  if (error)
+    Serial.println(F("Failed to read file, using default configuration"));
+  else
+  {
+    JsonObject root = doc.as<JsonObject>();  
+    wifiSSID = root["ssid"].as<String>();
+    wifiPassword = root["password"].as<String>();
+    mqttServer = root["mqtt_server"].as<String>();  
+  }
+  file.close();
+ 
+	Serial.printf("Loaded wifiSSID: %s\r\n", wifiSSID.c_str());
+	Serial.printf("Loaded wifiPassword: %s\r\n", wifiPassword.c_str());
+	Serial.printf("Loaded mqttServer: %s\r\n", mqttServer.c_str());
 	return true;
 }
-
 //----------------------------------------------------------------------------------------
 void setup_wifi() {
 	delay(10);
 	// We start by connecting to a WiFi network
-	Serial.printf("\r\nConnecting to %s\r\n", ssid.c_str());
+	Serial.printf("\r\nConnecting to %s\r\n", wifiSSID.c_str());
 
-	WiFi.begin(ssid.c_str(), password.c_str());
+	WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
 
 	// Wait for connection
 	while (WiFi.status() != WL_CONNECTED) {
@@ -147,9 +122,6 @@ void reconnect() {
 }
 //----------------------------------------------------------------------------------------
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-
-	mqttReqCount++;
-
 	// Conver the incoming byte array to a string
 	payload[length] = '\0'; // Null terminator used to terminate the char array
 	String mqttTopic = topic;
@@ -162,19 +134,16 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 		dtostrf(round(bmeTempCorection(bme.readTemperature())*10.0) / 10.0, 2, 1/*2*/, msg);
 		Serial.printf("MQTT send topic:[%s], msg: %s\r\n", sensorsBME280TemperatureTopic, msg);
 		client.publish(sensorsBME280TemperatureTopic, msg);
-		mqttResCount++;
 	}
 	else if (mqttTopic.equals(sensorsBME280CommandTopic) && mqttMessage.equals(sensorsBME280CommandPress)) {
 		dtostrf(round(bme.readPressure()/10.0)/10.0, 3, 1/*2*/, msg);
 		Serial.printf("MQTT send topic:[%s], msg: %s\r\n", sensorsBME280PressureTopic, msg);
 		client.publish(sensorsBME280PressureTopic, msg);
-		mqttResCount++;
 	}
 	else if (mqttTopic.equals(sensorsBME280CommandTopic) && mqttMessage.equals(sensorsBME280CommandHum)) {
 		dtostrf(round(bme.readHumidity()*10.0) / 10.0, 2, 1/*2*/, msg);
 		Serial.printf("MQTT send topic:[%s], msg: %s\r\n", sensorsBME280HumidityTopic, msg);
 		client.publish(sensorsBME280HumidityTopic, msg);
-		mqttResCount++;
 	}
 }
 //----------------------------------------------------------------------------------------
@@ -197,11 +166,23 @@ void setup() {
 
 	while (!SPIFFS.begin()) {
 		Serial.println("Failed to mount file system");
-		delay(5000);
+    for (uint8_t i=0; i<=5; i++){
+      digitalWrite(BUILT_LED, LED_ON); // Turn the LED on
+      delay(100);
+      digitalWrite(BUILT_LED, LED_OFF); // Turn the LED off by making the voltage HIGH
+      delay(100);
+    }
+		delay(5000);    
 	}
 
 	while (!loadConfig()) {
 		Serial.println("Failed load config");
+    for (uint8_t i=0; i<=5; i++){
+      digitalWrite(BUILT_LED, LED_ON); // Turn the LED on
+      delay(100);
+      digitalWrite(BUILT_LED, LED_OFF); // Turn the LED off by making the voltage HIGH
+      delay(100);
+    }   
 		delay(5000);
 	}
 
@@ -214,8 +195,7 @@ void setup() {
 
 	setup_wifi();                   // Connect to wifi   
 
-
-	client.setServer(mqtt_server.c_str(), 1883);
+  client.setServer(mqttServer.c_str(), 1883);
 	client.setCallback(mqttCallback);
 
 	// Start OTA server.
